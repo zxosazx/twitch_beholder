@@ -72,7 +72,7 @@ def request_client_id():
 def send_sms(message_sms):
     print (message_sms)
     # URL_MESSAGE = 'https://sms.ru/sms/send'
-    # p = {'api_id':'0C5DD3A1-96DD-0318-FCCC-5776BFD68808','to':'7______________','msg':message_sms}
+    # p = {'api_id':'0C5DD3A1-_____-_____-_______-5776BFD68808','to':'7______________','msg':message_sms}
     # try:
         # r = requests.get(URL_MESSAGE, params=p)
         # logging.info('sms:' + message_sms)
