@@ -11,7 +11,7 @@ import threading
 import streamlink
 import os
 LOCATION_REC = "./"
-version = "0.1.1"
+version = "0.1.2"
 CHECK_FREQUENCY = 1 * 20  # in seconds
 #запрос переменной из файла oauth_token.txt рядом со скриптом
 try:
@@ -69,6 +69,18 @@ def request_client_id():
     H_ID = {'Client-ID': d['client_id']}
     return (H_ID)
        
+def send_sms(message_sms):
+    print (message_sms)
+    # URL_MESSAGE = 'https://sms.ru/sms/send'
+    # p = {'api_id':'0C5DD3A1-96DD-0318-FCCC-5776BFD68808','to':'7______________','msg':message_sms}
+    # try:
+        # r = requests.get(URL_MESSAGE, params=p)
+        # logging.info('sms:' + message_sms)
+        # print ('send sms ok')
+    # except requests.exceptions.RequestException as e:  # This is the correct syntax
+        # print (e)
+        # print ('error sms')
+
 def Check_Online():
     try:
         HEADERS_ID = request_client_id()
@@ -149,50 +161,11 @@ def get_vod_1():
         logging.info('Last VOD url ' + url)    
 
 
-def recorder_primary (FILENAME_STREAMLINK, REC_ADRESS, QUALITY):
-    process = subprocess.Popen(['streamlink', REC_ADRESS, QUALITY,'--hls-live-restart','-o',FILENAME_STREAMLINK],shell=False)
-    pidrecorder = process.pid
-    q = "UPDATE {table} SET PidRecorder='" + str(pidrecorder) + "' WHERE id=1"
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    conn.commit()
-    q = "UPDATE {table} SET PidScript='" + str(os.getpid()) + "' WHERE id=1"
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    conn.commit()
-    logging.info('pid recorder ' + str(pidrecorder))
-    logging.info('pid script ' + str(os.getpid()))
-    time.sleep(30)
-    logging.info('Recorder: streamlink')
-
-
-def recorder_slave (FILENAME_STREAMLINK, REC_ADRESS, QUALITY)
-    process = subprocess.Popen(['youtube-dl','-f', QUALITY,'-o',FILENAME_STREAMLINK, REC_ADRESS],shell=False)
-    pidrecorder = process.pid
-    q = "UPDATE {table} SET PidRecorder='" + str(pidrecorder) + "' WHERE id=1"
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    conn.commit()
-    q = "UPDATE {table} SET PidScript='" + str(os.getpid()) + "' WHERE id=1"
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    conn.commit()
-    logging.info('pid recorder ' + str(pidrecorder))
-    logging.info('pid script ' + str(os.getpid()))
-    logging.info('Recorder: youtube-dl')
-    #Запрос последнего vod
-    time.sleep(30)
-    logging.info('Recorder: youtube-dl')
-    print ('Record youtube-dl')
-    
-    
 def start_loop():
     while True:
         stream = Check_Online()
         if stream:
-            q = """UPDATE {table} SET record=True WHERE id=1"""
-            cursor.execute(q.format(table=LOGIN_STREAMER))
-            conn.commit()
             FILENAME_STREAMLINK = LOCATION_REC + LOGIN_STREAMER + time.strftime('%Y-%m-%d-%H-%M') + '.mp4'
-            q = "UPDATE {table} SET RecFile='" + FILENAME_STREAMLINK + "' WHERE id=1"
-            cursor.execute(q.format(table=LOGIN_STREAMER))
-            conn.commit()
             logging.info('Stream online, rec ' + FILENAME_STREAMLINK )
             print('Stream online, rec ' + FILENAME_STREAMLINK )
             #Выбор рекордера
@@ -208,25 +181,53 @@ def start_loop():
                print (url)
                logging.info('Stream url ' + url)
                #Выхов стримлинка, запись.
-               recorder_primary(FILENAME_STREAMLINK, REC_ADRESS, QUALITY)
+               
+               process = subprocess.Popen(['streamlink', REC_ADRESS, QUALITY,'--hls-live-restart','-o',FILENAME_STREAMLINK],shell=False)
+               pidrecorder = process.pid
+               logging.info('pid recorder ' + str(pidrecorder))
+               logging.info('pid script ' + str(os.getpid()))
+               #Запрос последнего vod
+               time.sleep(30)
+               logging.info('Recorder: streamlink')
                try:
                    get_vod_1()
                except:
                    logging.warning('No VOD or network error')
                    print ('No VOD or network error')
+               send_sms('rec_started_via_streamlink')
+               code = process.wait()
             #Youtube-dl резерв
             except:
                logging.warning('Streamlink error, change recorder')
                print ("Внимание, переход на резервный рекордер!")
-               recorder_slave(FILENAME_STREAMLINK, REC_ADRESS, QUALITY)
+               #Логирование урл стрима
+               #streams = streamlink.streams(REC_ADRESS)
+               #stream = streams["best"]
+               #fd = stream.open()
+               #url = fd.writer.stream.url
+               #fd.close()
+               #print (url)
+               #logging.info('Stream url ' + url)
+               #Выхов стримлинка, запись.
+               
+               REC_ADRESS2 = 'https://www.twitch.tv/' + LOGIN_STREAMER
+               print (REC_ADRESS2)
+               process = subprocess.Popen(['youtube-dl','-f', QUALITY,'-o',FILENAME_STREAMLINK, REC_ADRESS2],shell=False)
+               pidrecorder = process.pid
+               logging.info('pid recorder ' + str(pidrecorder))
+               logging.info('pid script ' + str(os.getpid()))
+               logging.info('Recorder: youtube-dl')
+               print ('Record youtube-dl')
+               #Запрос последнего vod
+               time.sleep(30)
                try:
                    get_vod_1()
                except:
                    logging.warning('No VOD or network error')
                    print ('No VOD or network error')
-            code = process.wait()
-            print (code)
-            logging.info ('Exit code: ' + code)
+               send_sms('rec_started_via_youtube-dl')
+               code = process.wait()
+
             #Конец стрима
             logging.info('Stream offline, rec stop, pause 5min')
             print(time.strftime('%Y-%m-%d-%H-%M') + ' Offline stream, pause 5min')
@@ -235,14 +236,20 @@ def start_loop():
                 print('Осталось %d секунд           ' % i , end='\r')
                 time.sleep(1)
             #cls()
-            q = """UPDATE {table} SET record=False WHERE Id=1"""
-            cursor.execute(q.format(table=LOGIN_STREAMER))
-            conn.commit()
+            send_sms('rec_stop')
             print(LOGIN_STREAMER)
             print(QUALITY,'\n')
             
         time.sleep(CHECK_FREQUENCY)
-
+#def Watchdog_script():
+#    while True:
+#      a = input()
+#      if a == 'e':
+#          logging.info('exit')
+#          sys.exit()
+#      elif  a == 'E':
+#          logging.info('exit')
+#          sys.exit()
 if __name__ == '__main__':
     
     parser = createParser()
@@ -251,22 +258,14 @@ if __name__ == '__main__':
     QUALITY = namespace.quality
     LOGIN_STREAMER = prepare_variables_login(REC_ADRESS)
     logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', filename=LOGIN_STREAMER+".log", level=logging.INFO, filemode="a")
-    #запускаем базу данных для локального сервера
-    conn = sqlite3.connect("twitch_module.db", check_same_thread = False) # или :memory: чтобы сохранить в RAM
-    cursor = conn.cursor()
- 
-    # Создание таблицы
-    q = """DROP TABLE IF EXISTS {table}"""
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    q = """CREATE TABLE {table} (id, starting, control_time, record, RecFile, PidRecorder, PidScript)"""
-    cursor.execute(q.format(table=LOGIN_STREAMER))
     logging.debug (namespace)
     logging.info("Beholder started")
     print('Twitch beholder started...\n')
-    print('Press and hold E for exit')
     print(LOGIN_STREAMER)
     print(QUALITY,'\n')
-    q = """INSERT INTO {table} VALUES(1,True,0,False,'none',0,0)"""
-    cursor.execute(q.format(table=LOGIN_STREAMER))
-    conn.commit()
+#    thread1 = threading.Thread(target=start_loop)
+#    thread1.start()
+#    thread2 = threading.Thread(target=Watchdog_script)
+#    thread2.start()
+    send_sms('script_started')
     start_loop()
